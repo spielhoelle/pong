@@ -3,18 +3,31 @@ import { api } from './api';
 import type { PageServerLoad, Action } from './$types';
 
 type Todo = {
-	uid: string;
-	created_at: Date;
-	text: string;
-	done: boolean;
-	pending_delete: boolean;
+	id: string,
+	key: string,
+	value: { 
+		rev: string
+	 },
+	doc: {
+		_id: string,
+		_rev: string,
+		ssid: string,
+		pong: string
+	}
 };
-
+import Nano from 'nano';
+const n = Nano('http://admin:password@127.0.0.1:5984')
+const db = n.db.use('pong')
 export const load: PageServerLoad = async ({ locals }) => {
 	// locals.userid comes from src/hooks.js
-	const response = await api('GET', `todos/${locals.userid}`);
-
-	if (response.status === 404) {
+	// const response = await api('GET', `todos/${locals.userid}`);
+	const docs = await db.list({
+		include_docs: true,
+		// descending: true,
+		// skip: 0,
+		limit: 500,
+	})
+	if (docs.rows.length === 0) {
 		// user hasn't created a todo list.
 		// start with an empty array
 		return {
@@ -22,13 +35,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 		};
 	}
 
-	if (response.status === 200) {
+	if (docs.rows.length > 0) {
 		return {
-			todos: (await response.json()) as Todo[]
+			todos: docs.rows as Todo[]
 		};
 	}
 
-	throw error(response.status);
+	throw error(500);
 };
 
 export const POST: Action = async ({ request, locals }) => {
