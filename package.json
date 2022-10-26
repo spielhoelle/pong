@@ -32,6 +32,9 @@
 	"type": "module",
 	"dependencies": {
 		"@fontsource/fira-mono": "^4.5.0",
-		"cookie": "^0.4.1"
+		"@types/d3": "^7.4.0",
+		"cookie": "^0.4.1",
+		"d3": "^7.6.1",
+		"nano": "^10.0.0"
 	}
 }

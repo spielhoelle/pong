@@ -3,8 +3,90 @@
 	import { scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import type { PageData } from './$types';
+	import { line, curveStep, scaleLinear, timeParse, extent, scaleTime } from 'd3';
+	import { onMount } from 'svelte';
 
 	export let data: PageData;
+	let el;
+	let width = 1200;
+	const height = 500;
+	const margin = { top: 20, bottom: 20, left: 20, right: 20 };
+	let path = line()
+		.x((d) => xScale(d.date))
+		.y((d) => yScale(d.pong))
+		.curve(curveStep);
+	let xLabel = (x) => {
+		return x.toISOString().substr(11, 5);
+	};
+	let linedata, xScale, yScale, xTicks, yTicks, yPath, xPath;
+	const makeLineData = (inputData) => {
+		let locallinedata = [];
+		inputData.forEach((d) => {
+			let pong;
+			if (d.doc.pong.includes('Request timeout')) {
+				pong = 0;
+			} else if (Number(d.doc.pong.replace(/.*time=(.*) ms$/, '$1')) > 1000) {
+				pong = 1000;
+			} else {
+				pong = Number(d.doc.pong.replace(/.*time=(.*) ms$/, '$1'));
+			}
+			locallinedata.push({
+				date: new Date(d.doc._id * 1000),
+				pong: pong
+			});
+		});
+		let extentX = extent(locallinedata, (d) => d.date);
+		xScale = scaleTime()
+			.domain(extentX)
+			.range([margin.left, width - margin.right]);
+
+		let extentY = extent(locallinedata, (d) => d.pong);
+		yScale = scaleLinear()
+			.domain(extentY)
+			.range([height - margin.bottom, margin.top]);
+
+		xTicks = [];
+		locallinedata.forEach((d) => {
+			if (d.date.getSeconds() == 0) {
+				xTicks.push(d.date);
+			}
+		});
+		yTicks = [];
+		for (let i = Math.round(extentY[0]); i < Math.round(extentY[1] + 1); i = i + 20) {
+			yTicks.push(Math.floor(i / 20) * 20);
+		}
+		xPath = `M${margin.left + 0.5},6V0H${width - margin.right + 1}V6`;
+		yPath = `M-6,${height + 0.5}H0.5V0.5H-6`;
+		linedata = locallinedata;
+		xScale = xScale;
+		yScale = yScale;
+		xTicks = xTicks;
+		yTicks = yTicks;
+		yPath = yPath;
+		xPath = xPath;
+	};
+
+	makeLineData(data.todos);
+	onMount(async () => {
+		async function fetchData() {
+			fetch('/api/todos', {
+				method: 'GET',
+				headers: {
+					'content-type': 'application/json',
+					accept: 'application/json'
+				}
+			})
+				.then((res) => res.json())
+				.then((res) => {
+					data.todos = res;
+					makeLineData(res);
+				});
+		}
+
+		const interval = setInterval(fetchData, 3000);
+		fetchData();
+		return () => clearInterval(interval);
+	});
 </script>
 
 <svelte:head>
@@ -12,25 +94,49 @@
 	<meta name="description" content="A todo list app" />
 </svelte:head>
 
-<div class="todos">
+<div bind:clientWidth={width} class="todos">
 	<h1>Todos</h1>
+	<svg bind:this={el} transform="translate({margin.left}, {margin.top})" width="100%" {height}>
+		<g>
+			<path d={path(linedata)} fill="none" stroke="blue" />
+		</g>
 
-	<form
-		class="new"
-		action="/todos"
-		method="post"
-		use:enhance={{
-			result: async ({ form }) => {
-				form.reset();
-			}
-		}}
-	>
-		<input name="text" aria-label="Add todo" placeholder="+ tap to add a todo" />
-	</form>
+		<!-- y axis -->
+		<g transform="translate({margin.left}, 0)">
+			<path stroke="currentColor" d={yPath} fill="none" />
+
+			{#each yTicks as y}
+				<g class="tick" opacity="1" transform="translate(0,{yScale(y)})">
+					<line stroke="currentColor" x2="-5" />
+					<text dy="0.32em" fill="currentColor" x="-{margin.left}">
+						{y}
+					</text>
+				</g>
+			{/each}
+		</g>
+
+		<!-- x axis -->
+		<g transform="translate(0, {height})">
+			<path stroke="currentColor" d={xPath} fill="none" />
+
+			{#each xTicks as x}
+				<g class="tick" opacity="1" transform="translate({xScale(x)},0)">
+					<line stroke="currentColor" y2="6" />
+					<text fill="currentColor" y="9" dy="0.71em" x="-{margin.left}">
+						{xLabel(x)}
+					</text>
+				</g>
+			{/each}
+		</g>
+	</svg>
 
 	{#each data.todos as todo (todo.id)}
 		<div class="todo" transition:scale|local={{ start: 0.7 }} animate:flip={{ duration: 200 }}>
 			<table>
+				<tr>
+					<td>Date</td>
+					<td>{new Date(todo.doc._id * 1000).toISOString().replace('T', ' ')}</td>
+				</tr>
 				<tr>
 					<td>SSID</td>
 					<td>{todo.doc.ssid}</td>
@@ -47,9 +153,11 @@
 <style>
 	.todos {
 		width: 100%;
-		max-width: var(--column-width);
-		margin: var(--column-margin-top) auto 0 auto;
 		line-height: 1;
+	}
+	svg {
+		margin-bottom: 60px;
+		overflow: visible;
 	}
 
 	.new {

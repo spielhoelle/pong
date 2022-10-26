@@ -1,4 +1,4 @@
-# Pong - a network stability and speed tool
+# Pong - a network stability and latency tool
 Build on couchdb shell script and svelte
 
 ## Instalation
